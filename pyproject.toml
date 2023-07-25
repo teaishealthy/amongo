@@ -1,0 +1,93 @@
+[tool.poetry]
+name = "amongo"
+version = "0.1.0"
+description = ""
+authors = ["teaishealthy <teaishealthy@protonmail.com>"]
+license = "MIT"
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.10"
+bson = "^0.5.10"
+
+[tool.poetry.group.dev.dependencies]
+ruff = "^0.0.280"
+pytest = "^7.4.0"
+black = "^23.7.0"
+
+[tool.pyright]
+reportPrivateUsage = false
+reportUnnecessaryTypeIgnoreComment = true
+stubPath = "stubs"
+
+[tool.ruff]
+include = ["amongo/*.py"]
+select = [
+    "E",
+    "F",
+    "W",
+    "I",
+    "D",
+    "UP",
+    "YTT",
+    "ANN",
+    "S",
+    "BLE",
+    "FBT",
+    "B",
+    "C4",
+    "DTZ",
+    "T10",
+    "EM",
+    "ISC",
+    "G",
+    "PIE",
+    "T20",
+    "Q",
+    "RSE",
+    "RET",
+    "SIM",
+    "TCH",
+    "ARG",
+    "PGH",
+    "PLC",
+    "PLE",
+    "PLR",
+    "PLW",
+    "TRY",
+    "RUF",
+]
+# F403, F405 do not need to hate wildcard imports. Pyright can find undefined errors.
+# D107, class docstr is in the class level, may change in future.
+# D203 and D211, D212 and D213 intentionally clash
+# ANN101, ANN102 ask for `self` and `cls` annotations, what?
+# RET505-RET508 does not allow for any branches where it is an elif and else after a return
+# PLR2004 too much to deal with right now
+# PLR0913 a bit of a churn to deal with for Client and Filter
+# S311 I do not need cryptographically secure random node selection thanks
+#
+# ANN401 Any is important for the dynamic nature of MongoDB
+ignore = [
+    "F403",
+    "F405",
+    "D107",
+    "D203",
+    "D213",
+    "ANN101",
+    "ANN102",
+    "RET505",
+    "RET506",
+    "RET507",
+    "RET508",
+    "PLR2004",
+    "PLR0913",
+    "S311",
+    "D407",
+    "ANN401",
+]
+unfixable = ["RET502", "RET503"]
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
