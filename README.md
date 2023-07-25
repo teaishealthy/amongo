@@ -18,8 +18,6 @@ import asyncio
 from amongo import Connection
 
 async def main():
-    conn = Connection('mongodb://localhost:27017')
-    db = conn['test']
-    collection = db['test']
-    await collection.insert_one({'test': 'test'})
+    conn = Connection('mongodb://localhost:27017/test')
+    await conn.coll('test').insert_one({'test': 'test'})
 ```
