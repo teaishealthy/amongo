@@ -1,5 +1,6 @@
-"""A MongoDB cursor."""
 # SPDX-License-Identifier: MIT
+
+"""A MongoDB cursor."""
 
 from __future__ import annotations
 

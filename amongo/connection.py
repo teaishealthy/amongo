@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: MIT
+
 """Connection to a MongoDB server."""
 import asyncio
 import random

@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: MIT
+
 """A MongoDB collection."""
 
 from __future__ import annotations

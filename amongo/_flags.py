@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: MIT
+
 """Flags for the OP_MSG Opcode."""
 from __future__ import annotations
 
