@@ -11,9 +11,9 @@ python = "^3.10"
 bson = "^0.5.10"
 
 [tool.poetry.group.dev.dependencies]
-ruff = "^0.0.280"
-pytest = "^7.4.0"
-black = "^23.7.0"
+ruff = "^0.1.9"
+pytest = "^7.4.3"
+black = "^23.12.1"
 
 [tool.pyright]
 reportPrivateUsage = false
