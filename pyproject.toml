@@ -13,7 +13,6 @@ bson = "^0.5.10"
 [tool.poetry.group.dev.dependencies]
 ruff = "^0.1.9"
 pytest = "^7.4.3"
-black = "^23.12.1"
 
 [tool.pyright]
 reportPrivateUsage = false
@@ -44,7 +43,9 @@ ignore = [
     # i need more than 5 function args
     "PLR0913",
     # pyright ignores are way too verbose
-    "PGH003"
+    "PGH003",
+    # ruff format things
+    "COM812", "ISC001"
 ]
 
 [tool.ruff.pydocstyle]
