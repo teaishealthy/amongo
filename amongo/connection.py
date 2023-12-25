@@ -9,27 +9,21 @@ import logging
 import random
 import struct
 from asyncio import StreamReader, StreamWriter
-from typing import TYPE_CHECKING, Any, NamedTuple, TypeVar
+from typing import TYPE_CHECKING, Any, TypeVar
 from urllib.parse import ParseResult, urlparse
 
 import bson
 
-from ._compression import compression_lookup, list_compressors, pick_compressor
-from ._flags import Flags
-from ._header import MessageHeader
 from .collection import Collection
+from .core.compressors import compression_lookup, list_compressors, pick_compressor
+from .core.models import Flags, MessageHeader, WireItem
 
 if TYPE_CHECKING:
-    from ._hello import Hello
+    from .core.typings import Hello
 
 T = TypeVar("T")
 
 logger = logging.getLogger(__name__)
-
-
-class _WireItem(NamedTuple):
-    header: MessageHeader
-    data: bytes
 
 
 class Connection:
@@ -46,7 +40,7 @@ class Connection:
         self._uri: ParseResult = urlparse(uri)
         self.__hello: Hello | None = None
         self._task: asyncio.Task[None] | None = None
-        self._waiters: dict[int, asyncio.Future[_WireItem]] = {}
+        self._waiters: dict[int, asyncio.Future[WireItem]] = {}
 
     def _fail_if_none(self, value: T | None) -> T:
         if value is None:
@@ -76,14 +70,14 @@ class Connection:
             data = await self._reader.read(length)
 
             if waiter := self._waiters.pop(header.response_to, None):
-                waiter.set_result(_WireItem(header, data))
+                waiter.set_result(WireItem(header, data))
 
-    async def _wait_for_response(self, request_id: int) -> _WireItem:
+    async def _wait_for_response(self, request_id: int) -> WireItem:
         future = asyncio.get_running_loop().create_future()
         self._waiters[request_id] = future
         return await future
 
-    def _parse_data(self, data: _WireItem) -> Any:
+    def _parse_data(self, data: WireItem) -> Any:
         """Parse the data from a WireItem.
 
         Args:
@@ -107,7 +101,7 @@ class Connection:
                 msg = "Decompressed data is not the expected length"
                 raise RuntimeError(msg)
 
-            data = _WireItem(
+            data = WireItem(
                 data.header._replace(opcode=original_opcode),
                 decompressed_data,
             )

@@ -1,10 +1,8 @@
 # SPDX-License-Identifier: MIT
-
-"""Flags for the OP_MSG Opcode."""
 from __future__ import annotations
 
 from enum import IntFlag
-from typing import TypeVar
+from typing import NamedTuple, TypeVar
 
 T = TypeVar("T", bound="Flags")
 
@@ -35,3 +33,15 @@ class Flags(IntFlag):
             msg = "Unknown bit set in flags"
             raise ValueError(msg)
         return self
+
+
+class MessageHeader(NamedTuple):
+    message_length: int
+    request_id: int
+    response_to: int
+    opcode: int
+
+
+class WireItem(NamedTuple):
+    header: MessageHeader
+    data: bytes
