@@ -1,13 +1,15 @@
 # SPDX-License-Identifier: MIT
 
 """Connection to a MongoDB server."""
+from __future__ import annotations
+
 import asyncio
 import io
 import logging
 import random
 import struct
 from asyncio import StreamReader, StreamWriter
-from typing import Any, NamedTuple, TypeVar
+from typing import TYPE_CHECKING, Any, NamedTuple, TypeVar
 from urllib.parse import ParseResult, urlparse
 
 import bson
@@ -15,8 +17,10 @@ import bson
 from ._compression import compression_lookup, list_compressors, pick_compressor
 from ._flags import Flags
 from ._header import MessageHeader
-from ._hello import Hello
 from .collection import Collection
+
+if TYPE_CHECKING:
+    from ._hello import Hello
 
 T = TypeVar("T")
 
