@@ -11,6 +11,7 @@ from urllib.parse import ParseResult, urlparse
 
 import bson
 
+from ._compression import compression_lookup, list_compressors, pick_compressor
 from ._flags import Flags
 from ._header import MessageHeader
 from ._hello import Hello
@@ -84,9 +85,26 @@ class Connection:
         Returns:
             Any: The parsed data. This will be decoded from BSON.
         """
-        assert (  # noqa: S101 TODO
-            data.header.opcode == 2013
-        ), "Expected OP_MSG, are you sure you are using MongoDB 5.1+?"
+        if data.header.opcode == 2012:
+            original_opcode = struct.unpack("<i", data.data[:4])[0]
+            uncompressed_length = struct.unpack("<i", data.data[4:8])[0]
+            compressor_id = struct.unpack("<b", data.data[8:9])[0]
+            compressor = compression_lookup[compressor_id]
+
+            decompressed_data = compressor().decompress(data.data[9:])
+
+            if len(decompressed_data) != uncompressed_length:
+                msg = "Decompressed data is not the expected length"
+                raise RuntimeError(msg)
+
+            data = _WireItem(
+                data.header._replace(opcode=original_opcode),
+                decompressed_data,
+            )
+
+        if data.header.opcode != 2013:
+            msg = "Only OP_MSG is supported"
+            raise NotImplementedError(msg)
 
         flags_bits = struct.unpack("<i", data.data[:4])[0]
         _flags = Flags(flags_bits).verify()
@@ -111,7 +129,7 @@ class Connection:
         header = await self._send(data)
         return self._parse_data(await self._wait_for_response(header.request_id))
 
-    async def _make_data(self, data: Any, *, flags: int) -> io.BytesIO:
+    def _make_data(self, data: Any, *, flags: int) -> io.BytesIO:
         data_bytes = io.BytesIO()
         data_bytes.write(int(flags).to_bytes(4, "little"))
         data_bytes.write(int(0).to_bytes(1, "little"))  # kind
@@ -120,7 +138,10 @@ class Connection:
         return data_bytes
 
     async def _send(self, data: Any) -> MessageHeader:
-        data_bytes = await self._make_data(data, flags=0)
+        if self.__hello and self.__hello.get("compression"):
+            return await self._send_compressed(data)
+
+        data_bytes = self._make_data(data, flags=0)
 
         header = MessageHeader(
             message_length=16 + data_bytes.getbuffer().nbytes,
@@ -133,13 +154,43 @@ class Connection:
         await self._writer.drain()
         return header
 
+    async def _send_compressed(self, data: Any) -> MessageHeader:
+        compressor, compressor_id = pick_compressor(self._hello["compression"])
+        original_data = self._make_data(data, flags=0)
+        data_bytes = io.BytesIO()
+
+        data_bytes.write(int(2013).to_bytes(4, "little"))  # original opcode
+        data_bytes.write(
+            int(original_data.getbuffer().nbytes).to_bytes(4, "little")
+        )  # original message length
+        data_bytes.write(int(compressor_id).to_bytes(1, "little"))  # compressor id
+        data_bytes.write(compressor().compress(original_data.getvalue()))
+
+        header = MessageHeader(
+            message_length=16 + data_bytes.getbuffer().nbytes,
+            request_id=random.randint(-(2**31) + 1, 2**31 - 1),
+            response_to=0,
+            opcode=2012,
+        )
+
+        self._writer.write(struct.pack("<iiii", *header) + data_bytes.getvalue())
+        await self._writer.drain()
+
+        return header
+
     async def open(self) -> None:
         """Open the connection."""
         self.__reader, self.__writer = await asyncio.open_connection(
             self._uri.hostname, self._uri.port or 27017
         )
 
-        result = await self._send({"hello": 1, "$db": self._uri.path[1:] or "admin"})
+        result = await self._send(
+            {
+                "hello": 1,
+                "$db": self._uri.path[1:] or "admin",
+                "compression": list_compressors(),
+            }
+        )
         future = asyncio.get_running_loop().create_future()
         self._waiters[result.request_id] = future
 
