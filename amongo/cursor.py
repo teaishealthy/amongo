@@ -55,10 +55,10 @@ class Cursor:
     async def next(self) -> dict[str, Any]:
         """Get the next document from the cursor.
 
-        Raises
+        Raises:
             Empty: If there are no more documents in the cursor.
 
-        Returns
+        Returns:
             dict[str, Any]: The next document.
         """
         while self._cursor.get("nextBatch"):
@@ -70,7 +70,7 @@ class Cursor:
                     "getMore": self._cursor["id"],
                     "collection": self._cursor["ns"],
                     "$db": self._connection._uri.path[1:],
-                }
+                },
             )
 
         raise CursorIsEmptyError

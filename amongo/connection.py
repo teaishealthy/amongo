@@ -3,6 +3,7 @@
 """Connection to a MongoDB server."""
 import asyncio
 import io
+import logging
 import random
 import struct
 from asyncio import StreamReader, StreamWriter
@@ -18,6 +19,8 @@ from ._hello import Hello
 from .collection import Collection
 
 T = TypeVar("T")
+
+logger = logging.getLogger(__name__)
 
 
 class _WireItem(NamedTuple):
@@ -85,6 +88,7 @@ class Connection:
         Returns:
             Any: The parsed data. This will be decoded from BSON.
         """
+        logger.debug("Received %s", data)
         if data.header.opcode == 2012:
             (
                 original_opcode,
@@ -115,7 +119,7 @@ class Connection:
         if kind != 0:
             msg = "Only Sections of type 0 / body are supported"
             raise NotImplementedError(msg)
-            # TODO: Implement other types of sections
+            # TODO @teaishealthy: Implement other types of sections
 
         return bson.loads(data.data[5:])
 
@@ -169,7 +173,7 @@ class Connection:
                 2013,
                 original_data.getbuffer().nbytes,
                 compressor_id,
-            )
+            ),
         )
 
         data_bytes.write(compressor().compress(original_data.getvalue()))
@@ -189,7 +193,8 @@ class Connection:
     async def open(self) -> None:
         """Open the connection."""
         self.__reader, self.__writer = await asyncio.open_connection(
-            self._uri.hostname, self._uri.port or 27017
+            self._uri.hostname,
+            self._uri.port or 27017,
         )
 
         result = await self._send(
@@ -197,7 +202,7 @@ class Connection:
                 "hello": 1,
                 "$db": self._uri.path[1:] or "admin",
                 "compression": list_compressors(),
-            }
+            },
         )
         future = asyncio.get_running_loop().create_future()
         self._waiters[result.request_id] = future

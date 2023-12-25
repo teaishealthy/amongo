@@ -22,70 +22,33 @@ stubPath = "stubs"
 
 [tool.ruff]
 include = ["amongo/*.py"]
-select = [
-    "E",
-    "F",
-    "W",
-    "I",
-    "D",
-    "UP",
-    "YTT",
-    "ANN",
-    "S",
-    "BLE",
-    "FBT",
-    "B",
-    "C4",
-    "DTZ",
-    "T10",
-    "EM",
-    "ISC",
-    "G",
-    "PIE",
-    "T20",
-    "Q",
-    "RSE",
-    "RET",
-    "SIM",
-    "TCH",
-    "ARG",
-    "PGH",
-    "PLC",
-    "PLE",
-    "PLR",
-    "PLW",
-    "TRY",
-    "RUF",
-]
-# F403, F405 do not need to hate wildcard imports. Pyright can find undefined errors.
-# D107, class docstr is in the class level, may change in future.
-# D203 and D211, D212 and D213 intentionally clash
-# ANN101, ANN102 ask for `self` and `cls` annotations, what?
-# RET505-RET508 does not allow for any branches where it is an elif and else after a return
-# PLR2004 too much to deal with right now
-# PLR0913 a bit of a churn to deal with for Client and Filter
-# S311 I do not need cryptographically secure random node selection thanks
-#
-# ANN401 Any is important for the dynamic nature of MongoDB
+select = ["ALL"]
+
 ignore = [
-    "F403",
-    "F405",
-    "D107",
-    "D203",
-    "D213",
-    "ANN101",
-    "ANN102",
-    "RET505",
-    "RET506",
-    "RET507",
-    "RET508",
-    "PLR2004",
-    "PLR0913",
-    "S311",
-    "D407",
+    # even mypy knows that self is of type Self
+    "ANN101", "ANN102",
+    # i dont want docstrings everywhere
+    "D100", "D101", "D102", "D103", "D104", "D105", "D106", "D107",
+    # Any is okay :D
     "ANN401",
+    # todos don't need to be so bureaucratic
+    "TD003", "FIX002",
+    # my message ids don't need to be cryptographically safe
+    "S311",
+    # thing.open and open are two different things...
+    "A003",
+    # similary i don't care if i shadow a builtin
+    "A002",
+    # im accessing my own attributes, i know what im doing
+    "SLF001",
+    # i need more than 5 function args
+    "PLR0913",
+    # pyright ignores are way too verbose
+    "PGH003"
 ]
-unfixable = ["RET502", "RET503"]
+
+[tool.ruff.pydocstyle]
+convention = "google"
 
 
 [build-system]

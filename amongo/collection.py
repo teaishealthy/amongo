@@ -42,7 +42,7 @@ class Collection:
                 "renameCollection": f"{self._db}.{self._name}",
                 "to": f"{self._db}.{new_name}",
                 "$db": self._db,
-            }
+            },
         )
 
     async def delete(
@@ -61,7 +61,7 @@ class Collection:
         Returns:
             int: The number of documents deleted.
         """  # noqa: E501
-        # TODO: collation and hint?
+        # TODO @teaishealthy: collation and hint?
         result = await self._connection._send_and_wait(
             {
                 "delete": self._name,
@@ -69,10 +69,10 @@ class Collection:
                     {
                         "q": q,
                         "limit": limit,
-                    }
+                    },
                 ],
                 "$db": self._db,
-            }
+            },
         )
 
         return result["n"]
@@ -102,7 +102,7 @@ class Collection:
                 "insert": self._name,
                 "documents": documents,
                 "$db": self._db,
-            }
+            },
         )
         return result["n"]
 

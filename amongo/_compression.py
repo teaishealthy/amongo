@@ -24,7 +24,7 @@ class Compressor(ABC):
 
         Returns:
             bool: True if the compressor is available, False otherwise.
-        """  # noqa: D406
+        """
         return True
 
     @abstractmethod
@@ -133,7 +133,7 @@ def pick_compressor(available_compressors: list[str]) -> tuple[type[Compressor],
 
     Returns:
         type[Compressor]: The compressor to use.
-    """  # noqa: D406
+    """
     # available_compressors is from mongod
 
     for compressor in available_compressors:
