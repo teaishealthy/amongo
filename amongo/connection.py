@@ -2,6 +2,7 @@
 
 """Connection to a MongoDB server."""
 import asyncio
+import io
 import random
 import struct
 from asyncio import StreamReader, StreamWriter
@@ -110,22 +111,25 @@ class Connection:
         header = await self._send(data)
         return self._parse_data(await self._wait_for_response(header.request_id))
 
-    async def _send(self, data: Any) -> MessageHeader:
-        data_bytes = b""
-        flags = 0
+    async def _make_data(self, data: Any, *, flags: int) -> io.BytesIO:
+        data_bytes = io.BytesIO()
+        data_bytes.write(int(flags).to_bytes(4, "little"))
+        data_bytes.write(int(0).to_bytes(1, "little"))  # kind
+        data_bytes.write(bson.dumps(data))
 
-        data_bytes += int(flags).to_bytes(4, "little")
-        data_bytes += int(0).to_bytes(1, "little")  # kind
-        data_bytes += bson.dumps(data)  # payload
+        return data_bytes
+
+    async def _send(self, data: Any) -> MessageHeader:
+        data_bytes = await self._make_data(data, flags=0)
 
         header = MessageHeader(
-            message_length=16 + len(data_bytes),
+            message_length=16 + data_bytes.getbuffer().nbytes,
             request_id=random.randint(-(2**31) + 1, 2**31 - 1),
             response_to=0,
             opcode=2013,
         )
 
-        self._writer.write(struct.pack("<iiii", *header) + data_bytes)
+        self._writer.write(struct.pack("<iiii", *header) + data_bytes.getvalue())
         await self._writer.drain()
         return header
 
