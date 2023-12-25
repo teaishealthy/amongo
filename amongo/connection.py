@@ -86,9 +86,11 @@ class Connection:
             Any: The parsed data. This will be decoded from BSON.
         """
         if data.header.opcode == 2012:
-            original_opcode = struct.unpack("<i", data.data[:4])[0]
-            uncompressed_length = struct.unpack("<i", data.data[4:8])[0]
-            compressor_id = struct.unpack("<b", data.data[8:9])[0]
+            (
+                original_opcode,
+                uncompressed_length,
+                compressor_id,
+            ) = struct.unpack("<iib", data.data[:9])
             compressor = compression_lookup[compressor_id]
 
             decompressed_data = compressor().decompress(data.data[9:])
@@ -106,7 +108,7 @@ class Connection:
             msg = "Only OP_MSG is supported"
             raise NotImplementedError(msg)
 
-        flags_bits = struct.unpack("<i", data.data[:4])[0]
+        (flags_bits,) = struct.unpack("<i", data.data[:4])
         _flags = Flags(flags_bits).verify()
 
         kind = data.data[4]
@@ -131,8 +133,10 @@ class Connection:
 
     def _make_data(self, data: Any, *, flags: int) -> io.BytesIO:
         data_bytes = io.BytesIO()
-        data_bytes.write(int(flags).to_bytes(4, "little"))
-        data_bytes.write(int(0).to_bytes(1, "little"))  # kind
+        data_bytes.write(struct.pack("<I", flags))
+
+        # sections:
+        data_bytes.write(struct.pack("<B", 0))  # section kind
         data_bytes.write(bson.dumps(data))
 
         return data_bytes
@@ -159,11 +163,15 @@ class Connection:
         original_data = self._make_data(data, flags=0)
         data_bytes = io.BytesIO()
 
-        data_bytes.write(int(2013).to_bytes(4, "little"))  # original opcode
         data_bytes.write(
-            int(original_data.getbuffer().nbytes).to_bytes(4, "little")
-        )  # original message length
-        data_bytes.write(int(compressor_id).to_bytes(1, "little"))  # compressor id
+            struct.pack(
+                "<IIB",
+                2013,
+                original_data.getbuffer().nbytes,
+                compressor_id,
+            )
+        )
+
         data_bytes.write(compressor().compress(original_data.getvalue()))
 
         header = MessageHeader(
