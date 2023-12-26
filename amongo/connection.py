@@ -17,6 +17,7 @@ import bson
 from .collection import Collection
 from .core.compressors import compression_lookup, list_compressors, pick_compressor
 from .core.models import Flags, MessageHeader, WireItem
+from .core.typings import MessageOpCode
 
 if TYPE_CHECKING:
     from .core.typings import Hello
@@ -87,7 +88,7 @@ class Connection:
             Any: The parsed data. This will be decoded from BSON.
         """
         logger.debug("< %s", data.header)
-        if data.header.opcode == 2012:
+        if data.header.opcode == MessageOpCode.OP_COMPRESSED:
             (
                 original_opcode,
                 uncompressed_length,
@@ -110,7 +111,7 @@ class Connection:
                 decompressed_data,
             )
 
-        if data.header.opcode != 2013:
+        if data.header.opcode != MessageOpCode.OP_MESSAGE:
             msg = "Only OP_MSG is supported"
             raise NotImplementedError(msg)
 
@@ -157,7 +158,7 @@ class Connection:
             message_length=16 + data_bytes.getbuffer().nbytes,
             request_id=random.randint(-(2**31) + 1, 2**31 - 1),
             response_to=0,
-            opcode=2013,
+            opcode=MessageOpCode.OP_MESSAGE,
         )
 
         self._writer.write(struct.pack("<iiii", *header) + data_bytes.getvalue())
@@ -173,7 +174,7 @@ class Connection:
         data_bytes.write(
             struct.pack(
                 "<IIB",
-                2013,
+                MessageOpCode.OP_MESSAGE,
                 original_data.getbuffer().nbytes,
                 compressor_id,
             ),
@@ -185,7 +186,7 @@ class Connection:
             message_length=16 + data_bytes.getbuffer().nbytes,
             request_id=random.randint(-(2**31) + 1, 2**31 - 1),
             response_to=0,
-            opcode=2012,
+            opcode=MessageOpCode.OP_COMPRESSED,
         )
 
         logger.debug("> %s", header)

@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
+from enum import IntEnum
 from typing import TYPE_CHECKING, Any, TypedDict
 
 if TYPE_CHECKING:
@@ -21,3 +22,8 @@ class Hello(TypedDict):
     readOnly: bool
     compression: list[str]
     saslSupportedMechs: list[str]
+
+
+class MessageOpCode(IntEnum):
+    OP_COMPRESSED = 2012
+    OP_MESSAGE = 2013
