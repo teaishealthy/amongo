@@ -1,7 +1,6 @@
-# test_flags.py
 import pytest
 
-from amongo._flags import Flags
+from amongo.core.models import Flags
 
 
 def test_verify_method_valid_flags():
