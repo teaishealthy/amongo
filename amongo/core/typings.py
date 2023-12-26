@@ -27,3 +27,8 @@ class Hello(TypedDict):
 class MessageOpCode(IntEnum):
     OP_COMPRESSED = 2012
     OP_MESSAGE = 2013
+
+
+class MessageSectionKind(IntEnum):
+    BODY = 0
+    DOCUMENT_SEQUENCE = 1

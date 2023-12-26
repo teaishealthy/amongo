@@ -17,7 +17,7 @@ import bson
 from .collection import Collection
 from .core.compressors import compression_lookup, list_compressors, pick_compressor
 from .core.models import Flags, MessageHeader, WireItem
-from .core.typings import MessageOpCode
+from .core.typings import MessageOpCode, MessageSectionKind
 
 if TYPE_CHECKING:
     from .core.typings import Hello
@@ -120,8 +120,8 @@ class Connection:
 
         kind = data.data[4]
 
-        if kind != 0:
-            msg = "Only Sections of type 0 / body are supported"
+        if kind != MessageSectionKind.BODY:
+            msg = "Only body sections are supported"
             raise NotImplementedError(msg)
             # TODO @teaishealthy: Implement other types of sections
 
