@@ -151,4 +151,4 @@ def list_compressors() -> list[str]:
     Returns:
         list[str]: The available compressors.
     """
-    return [c.name for c in compressors]
+    return [c.name for c in compressors if c.available()]
