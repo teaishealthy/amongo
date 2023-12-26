@@ -86,7 +86,7 @@ class Connection:
         Returns:
             Any: The parsed data. This will be decoded from BSON.
         """
-        logger.debug("Received %s", data)
+        logger.debug("< %s", data.header)
         if data.header.opcode == 2012:
             (
                 original_opcode,
@@ -95,6 +95,10 @@ class Connection:
             ) = struct.unpack("<iib", data.data[:9])
             compressor = compression_lookup[compressor_id]
 
+            logger.debug(
+                "  decompressing with %s",
+                compressor.name,
+            )
             decompressed_data = compressor().decompress(data.data[9:])
 
             if len(decompressed_data) != uncompressed_length:
@@ -162,6 +166,7 @@ class Connection:
 
     async def _send_compressed(self, data: Any) -> MessageHeader:
         compressor, compressor_id = pick_compressor(self._hello["compression"])
+
         original_data = self._make_data(data, flags=0)
         data_bytes = io.BytesIO()
 
@@ -183,6 +188,9 @@ class Connection:
             opcode=2012,
         )
 
+        logger.debug("> %s", header)
+        logger.debug("  compressing with %s", compressor.name)
+
         self._writer.write(struct.pack("<iiii", *header) + data_bytes.getvalue())
         await self._writer.drain()
 
@@ -195,6 +203,9 @@ class Connection:
             self._uri.port or 27017,
         )
 
+        logger.debug(
+            "Sending hello. Available compressors: %s", ", ".join(list_compressors())
+        )
         result = await self._send(
             {
                 "hello": 1,
