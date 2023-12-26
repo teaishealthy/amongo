@@ -24,6 +24,12 @@ class Hello(TypedDict):
     saslSupportedMechs: list[str]
 
 
+class CursorType(TypedDict):
+    id: int
+    nextBatch: list[dict[str, Any]]
+    ns: str
+
+
 class MessageOpCode(IntEnum):
     OP_COMPRESSED = 2012
     OP_MESSAGE = 2013

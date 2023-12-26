@@ -4,20 +4,13 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, TypedDict
+from typing import TYPE_CHECKING, Any
+
+from .core.errors import CursorIsEmptyError
 
 if TYPE_CHECKING:
     from .connection import Connection
-
-
-class _CursorType(TypedDict):
-    id: int
-    nextBatch: list[dict[str, Any]]
-    ns: str
-
-
-class CursorIsEmptyError(Exception):
-    """Raised when a cursor is empty."""
+    from .core.typings import CursorType
 
 
 class Cursor:
@@ -31,7 +24,7 @@ class Cursor:
             result (FindManyResult): The result of the find_many operation.
         """
         self._connection = connection
-        self._cursor: _CursorType = {
+        self._cursor: CursorType = {
             "id": result["cursor"]["id"],
             "nextBatch": result["cursor"]["firstBatch"],
             "ns": result["cursor"]["ns"],
