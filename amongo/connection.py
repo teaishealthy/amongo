@@ -119,12 +119,16 @@ class Connection:
         _flags = Flags(flags_bits).verify()
 
         kind = data.data[4]
+
         if kind != 0:
             msg = "Only Sections of type 0 / body are supported"
             raise NotImplementedError(msg)
             # TODO @teaishealthy: Implement other types of sections
 
-        return bson.loads(data.data[5:])
+        # This is part of the BSON spec, not the MongoDB wire protocol
+        (length,) = struct.unpack("<i", data.data[5:9])
+
+        return bson.loads(data.data[5 : 5 + length])
 
     async def _send_and_wait(self, data: Any) -> Any:
         """Send an OP_MSG with kind 0 and wait for the matching response.
