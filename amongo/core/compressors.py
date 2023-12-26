@@ -119,14 +119,27 @@ class Zstd(Compressor):
 
 compressors = [Snappy, Zstd, Zlib, NoCompression]
 
-compression_registry = {
+compression_registry: dict[str, tuple[type[Compressor], int]] = {
     "snappy": (Snappy, 1),
     "zstd": (Zstd, 3),
     "zlib": (Zlib, 2),
     "noop": (NoCompression, 0),
 }
 
-compression_lookup = {c[1]: c[0] for c in compression_registry.values()}
+compression_lookup: dict[int, type[Compressor]] = {
+    c[1]: c[0] for c in compression_registry.values()
+}
+
+
+def register_new_compressor(compressor: type[Compressor], id: int) -> None:
+    """Register a new compressor.
+
+    Args:
+        compressor (type[Compressor]): The compressor class.
+        id (int): The compressor id.
+    """
+    compression_registry[compressor.name] = (compressor, id)
+    compression_lookup[id] = compressor
 
 
 def pick_compressor(available_compressors: list[str]) -> tuple[type[Compressor], int]:
