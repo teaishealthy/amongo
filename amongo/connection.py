@@ -118,17 +118,45 @@ class Connection:
         (flags_bits,) = struct.unpack("<i", data.data[:4])
         _flags = Flags(flags_bits).verify()
 
-        kind = data.data[4]
+        body: Any | None = None
+        reader = io.BytesIO(data.data[4:])
 
-        if kind != MessageSectionKind.BODY:
-            msg = "Only body sections are supported"
-            raise NotImplementedError(msg)
-            # TODO @teaishealthy: Implement other types of sections
+        while reader.tell() < len(data.data[4:]):
+            (kind,) = struct.unpack("<B", reader.read(1))
+            # This is part of the BSON spec, not the MongoDB wire protocol
 
-        # This is part of the BSON spec, not the MongoDB wire protocol
-        (length,) = struct.unpack("<i", data.data[5:9])
+            if kind == MessageSectionKind.BODY:
+                if body is not None:
+                    msg = (
+                        "Expected only one body section, but found multiple\n",
+                        "This is a bug in amongo, please report it at \n",
+                        "https://github.com/teaishealthy/amongo/issues/new",
+                    )
+                    raise NotImplementedError(msg)
 
-        return bson.loads(data.data[5 : 5 + length])
+                # This is part of the BSON spec, not the MongoDB wire protocol
+                (length,) = struct.unpack("<i", reader.read(4))
+                reader.seek(-4, io.SEEK_CUR)
+                body = bson.loads(reader.read(length))
+
+            elif kind == MessageSectionKind.DOCUMENT_SEQUENCE:
+                if body is None:
+                    msg = "Body section must come before document sequence"
+                    raise RuntimeError(msg)
+
+                (size,) = struct.unpack("<i", reader.read(4))
+
+                string_bytes = bytearray()
+                while (byte := reader.read(1)) != b"\x00":
+                    string_bytes += byte
+
+                string = string_bytes.decode("utf-8")
+
+                # TODO @teaishealthy: I have no idea how mongod
+                # builds a document sequence - requires testing
+                body[string] = bson.loads(reader.read(size - len(string_bytes) - 1))
+
+        return body
 
     async def _send_and_wait(self, data: Any) -> Any:
         """Send an OP_MSG with kind 0 and wait for the matching response.
