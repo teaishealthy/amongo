@@ -187,7 +187,7 @@ class Connection:
         data_bytes = self._make_data(data, flags=0)
 
         header = MessageHeader(
-            message_length=16 + data_bytes.getbuffer().nbytes,
+            message_length=16 + data_bytes.tell(),
             request_id=random.randint(-(2**31) + 1, 2**31 - 1),
             response_to=0,
             opcode=MessageOpCode.OP_MESSAGE,
@@ -207,7 +207,7 @@ class Connection:
             struct.pack(
                 "<IIB",
                 MessageOpCode.OP_MESSAGE,
-                original_data.getbuffer().nbytes,
+                original_data.tell(),
                 compressor_id,
             ),
         )
@@ -215,7 +215,7 @@ class Connection:
         data_bytes.write(compressor().compress(original_data.getvalue()))
 
         header = MessageHeader(
-            message_length=16 + data_bytes.getbuffer().nbytes,
+            message_length=16 + data_bytes.tell(),
             request_id=random.randint(-(2**31) + 1, 2**31 - 1),
             response_to=0,
             opcode=MessageOpCode.OP_COMPRESSED,
