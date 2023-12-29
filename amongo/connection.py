@@ -260,7 +260,8 @@ class Connection:
             opcode=MessageOpCode.OP_MESSAGE,
         )
 
-        self._writer.write(struct.pack("<iiii", *header) + data_bytes.getvalue())
+        self._writer.write(struct.pack("<iiii", *header))
+        self._writer.write(data_bytes.getvalue())
         await self._writer.drain()
         return header
 
@@ -291,7 +292,8 @@ class Connection:
         logger.debug("> %s", header)
         logger.debug("  compressing with %s", compressor.name)
 
-        self._writer.write(struct.pack("<iiii", *header) + data_bytes.getvalue())
+        self._writer.write(struct.pack("<iiii", *header))
+        self._writer.write(data_bytes.getvalue())
         await self._writer.drain()
 
         return header
