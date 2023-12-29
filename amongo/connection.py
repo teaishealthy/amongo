@@ -152,7 +152,6 @@ async def parse_data(data: WireItem) -> Any:
 
     while reader.tell() < len(data.data[4:]):
         (kind,) = struct.unpack("<B", reader.read(1))
-        # This is part of the BSON spec, not the MongoDB wire protocol
 
         if kind == MessageSectionKind.BODY:
             if body is not None:
