@@ -9,7 +9,7 @@ import logging
 import random
 import struct
 from asyncio import StreamReader, StreamWriter
-from typing import TYPE_CHECKING, Any, TypeVar
+from typing import TYPE_CHECKING, Any, TypeVar, cast
 from urllib.parse import ParseResult, urlparse
 
 import bson
@@ -26,9 +26,22 @@ T = TypeVar("T")
 
 logger = logging.getLogger(__name__)
 
+MAX_WRITE_BATCH_SIZE = 1000
+
 
 class Connection:
     """Connection to a MongoDB server."""
+
+    @property
+    def max_write_batch_size(self) -> int:
+        """Get the maximum number of documents that can be inserted in a single batch.
+
+        Returns:
+            int: The maximum number of documents that can be inserted in a single batch.
+        """
+        if self.__hello is None:
+            return MAX_WRITE_BATCH_SIZE
+        return self.__hello["maxWriteBatchSize"]
 
     def __init__(self, uri: str) -> None:
         """Create a new Connection instance.
@@ -171,12 +184,35 @@ class Connection:
         return self._parse_data(await self._wait_for_response(header.request_id))
 
     def _make_data(self, data: Any, *, flags: int) -> io.BytesIO:
+        documents: list[Any] | None = None
+        if isinstance(data, dict) and "documents" in data:
+            documents = cast(Any, data.pop("documents"))  # type: ignore
+
         data_bytes = io.BytesIO()
         data_bytes.write(struct.pack("<I", flags))
 
         # sections:
         data_bytes.write(struct.pack("<B", 0))  # section kind
         data_bytes.write(bson.dumps(data))
+
+        if documents is not None:
+            idx = 0
+            while idx < len(documents):
+                section_writer = io.BytesIO()
+
+                data_bytes.write(struct.pack("<B", 1))  # section kind
+
+                section_writer.write(b"documents\x00")
+
+                while idx < len(documents):
+                    section_writer.write(bson.dumps(documents[idx]))
+                    idx += 1
+
+                    if idx >= self.max_write_batch_size:
+                        break
+
+                data_bytes.write(struct.pack("<I", section_writer.tell() + 4))
+                data_bytes.write(section_writer.getvalue())
 
         return data_bytes
 
