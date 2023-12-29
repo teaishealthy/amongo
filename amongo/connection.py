@@ -53,6 +53,141 @@ def bson_loads(data: bytes) -> Any:
     return bson.decode(data)  # type: ignore
 
 
+def make_data(data: Any, *, max_write_batch_size: int, flags: int) -> io.BytesIO:
+    documents: list[Any] | None = None
+    if isinstance(data, dict) and "documents" in data:
+        documents = cast(Any, data.pop("documents"))  # type: ignore
+
+    data_bytes = io.BytesIO()
+    data_bytes.write(struct.pack("<I", flags))
+
+    # sections:
+    data_bytes.write(struct.pack("<B", 0))  # section kind
+    data_bytes.write(bson_dumps(data))
+
+    if documents is not None:
+        idx = 0
+        while idx < len(documents):
+            section_writer = io.BytesIO()
+
+            data_bytes.write(struct.pack("<B", 1))  # section kind
+
+            section_writer.write(b"documents\x00")
+
+            while idx < len(documents):
+                section_writer.write(bson_dumps(documents[idx]))
+                idx += 1
+
+                if idx >= max_write_batch_size:
+                    break
+
+            data_bytes.write(struct.pack("<I", section_writer.tell() + 4))
+            data_bytes.write(section_writer.getvalue())
+
+    return data_bytes
+
+
+async def parse_header(reader: asyncio.StreamReader) -> WireItem:
+    """Parse a message header and load the data.
+
+    Args:
+        reader (asyncio.StreamReader): The reader to read from.
+
+    Returns:
+        WireItem: The parsed header and data.
+    """
+    header_data = await reader.readexactly(16)
+    header = MessageHeader(
+        *struct.unpack("<iiii", header_data),
+    )
+    length = header.message_length - 16
+    data = await reader.read(length)
+    return WireItem(header, data)
+
+
+async def parse_data(data: WireItem) -> Any:
+    """Parse the data from a WireItem.
+
+    Args:
+        data (WireItem): The data to parse.
+
+    Returns:
+        Any: The parsed data. This will be decoded from BSON.
+    """
+    logger.debug("< %s", data.header)
+    if data.header.opcode == MessageOpCode.OP_COMPRESSED:
+        (
+            original_opcode,
+            uncompressed_length,
+            compressor_id,
+        ) = struct.unpack("<iib", data.data[:9])
+        compressor = compression_lookup[compressor_id]
+
+        logger.debug(
+            "  decompressing with %s",
+            compressor.name,
+        )
+        decompressed_data = await asyncio.get_event_loop().run_in_executor(
+            None, compressor().decompress, data.data[9:]
+        )
+
+        if len(decompressed_data) != uncompressed_length:
+            msg = "Decompressed data is not the expected length"
+            raise RuntimeError(msg)
+
+        data = WireItem(
+            data.header._replace(opcode=original_opcode),
+            decompressed_data,
+        )
+
+    if data.header.opcode != MessageOpCode.OP_MESSAGE:
+        msg = "Only OP_MSG is supported"
+        raise NotImplementedError(msg)
+
+    (flags_bits,) = struct.unpack("<i", data.data[:4])
+    _flags = Flags(flags_bits).verify()
+
+    body: Any | None = None
+    reader = io.BytesIO(data.data[4:])
+
+    while reader.tell() < len(data.data[4:]):
+        (kind,) = struct.unpack("<B", reader.read(1))
+        # This is part of the BSON spec, not the MongoDB wire protocol
+
+        if kind == MessageSectionKind.BODY:
+            if body is not None:
+                msg = (
+                    "Expected only one body section, but found multiple\n",
+                    "This is a bug in amongo, please report it at \n",
+                    "https://github.com/teaishealthy/amongo/issues/new",
+                )
+                raise NotImplementedError(msg)
+
+            # This is part of the BSON spec, not the MongoDB wire protocol
+            (length,) = struct.unpack("<i", reader.read(4))
+            reader.seek(-4, io.SEEK_CUR)
+            body = bson_loads(reader.read(length))
+
+        elif kind == MessageSectionKind.DOCUMENT_SEQUENCE:
+            if body is None:
+                msg = "Body section must come before document sequence"
+                raise RuntimeError(msg)
+
+            (size,) = struct.unpack("<i", reader.read(4))
+
+            string_bytes = bytearray()
+            while (byte := reader.read(1)) != b"\x00":
+                string_bytes += byte
+
+            string = string_bytes.decode("utf-8")
+
+            # TODO @teaishealthy: I have no idea how mongod
+            # builds a document sequence - requires testing
+            body[string] = bson_dumps(reader.read(size - len(string_bytes) - 1))
+
+    return body
+
+
 class Connection:
     """Connection to a MongoDB server."""
 
@@ -107,102 +242,15 @@ class Connection:
 
     async def _keep_reading(self) -> None:
         while True:
-            header_data = await self._reader.readexactly(16)
-            header = MessageHeader(
-                *struct.unpack("<iiii", header_data),
-            )
-            length = header.message_length - 16
-            data = await self._reader.read(length)
+            item = await parse_header(self._reader)
 
-            if waiter := self._waiters.pop(header.response_to, None):
-                waiter.set_result(WireItem(header, data))
+            if waiter := self._waiters.pop(item.header.response_to, None):
+                waiter.set_result(item)
 
     async def _wait_for_response(self, request_id: int) -> WireItem:
         future = asyncio.get_running_loop().create_future()
         self._waiters[request_id] = future
         return await future
-
-    async def _parse_data(self, data: WireItem) -> Any:
-        """Parse the data from a WireItem.
-
-        Args:
-            data (WireItem): The data to parse.
-
-        Returns:
-            Any: The parsed data. This will be decoded from BSON.
-        """
-        logger.debug("< %s", data.header)
-        if data.header.opcode == MessageOpCode.OP_COMPRESSED:
-            (
-                original_opcode,
-                uncompressed_length,
-                compressor_id,
-            ) = struct.unpack("<iib", data.data[:9])
-            compressor = compression_lookup[compressor_id]
-
-            logger.debug(
-                "  decompressing with %s",
-                compressor.name,
-            )
-            decompressed_data = await asyncio.get_event_loop().run_in_executor(
-                None, compressor().decompress, data.data[9:]
-            )
-
-            if len(decompressed_data) != uncompressed_length:
-                msg = "Decompressed data is not the expected length"
-                raise RuntimeError(msg)
-
-            data = WireItem(
-                data.header._replace(opcode=original_opcode),
-                decompressed_data,
-            )
-
-        if data.header.opcode != MessageOpCode.OP_MESSAGE:
-            msg = "Only OP_MSG is supported"
-            raise NotImplementedError(msg)
-
-        (flags_bits,) = struct.unpack("<i", data.data[:4])
-        _flags = Flags(flags_bits).verify()
-
-        body: Any | None = None
-        reader = io.BytesIO(data.data[4:])
-
-        while reader.tell() < len(data.data[4:]):
-            (kind,) = struct.unpack("<B", reader.read(1))
-            # This is part of the BSON spec, not the MongoDB wire protocol
-
-            if kind == MessageSectionKind.BODY:
-                if body is not None:
-                    msg = (
-                        "Expected only one body section, but found multiple\n",
-                        "This is a bug in amongo, please report it at \n",
-                        "https://github.com/teaishealthy/amongo/issues/new",
-                    )
-                    raise NotImplementedError(msg)
-
-                # This is part of the BSON spec, not the MongoDB wire protocol
-                (length,) = struct.unpack("<i", reader.read(4))
-                reader.seek(-4, io.SEEK_CUR)
-                body = bson_loads(reader.read(length))
-
-            elif kind == MessageSectionKind.DOCUMENT_SEQUENCE:
-                if body is None:
-                    msg = "Body section must come before document sequence"
-                    raise RuntimeError(msg)
-
-                (size,) = struct.unpack("<i", reader.read(4))
-
-                string_bytes = bytearray()
-                while (byte := reader.read(1)) != b"\x00":
-                    string_bytes += byte
-
-                string = string_bytes.decode("utf-8")
-
-                # TODO @teaishealthy: I have no idea how mongod
-                # builds a document sequence - requires testing
-                body[string] = bson_dumps(reader.read(size - len(string_bytes) - 1))
-
-        return body
 
     async def _send_and_wait(self, data: Any) -> Any:
         """Send an OP_MSG with kind 0 and wait for the matching response.
@@ -214,46 +262,15 @@ class Connection:
             Any: The response data, this will be decoded from BSON.
         """
         header = await self._send(data)
-        return await self._parse_data(await self._wait_for_response(header.request_id))
-
-    def _make_data(self, data: Any, *, flags: int) -> io.BytesIO:
-        documents: list[Any] | None = None
-        if isinstance(data, dict) and "documents" in data:
-            documents = cast(Any, data.pop("documents"))  # type: ignore
-
-        data_bytes = io.BytesIO()
-        data_bytes.write(struct.pack("<I", flags))
-
-        # sections:
-        data_bytes.write(struct.pack("<B", 0))  # section kind
-        data_bytes.write(bson_dumps(data))
-
-        if documents is not None:
-            idx = 0
-            while idx < len(documents):
-                section_writer = io.BytesIO()
-
-                data_bytes.write(struct.pack("<B", 1))  # section kind
-
-                section_writer.write(b"documents\x00")
-
-                while idx < len(documents):
-                    section_writer.write(bson_dumps(documents[idx]))
-                    idx += 1
-
-                    if idx >= self.max_write_batch_size:
-                        break
-
-                data_bytes.write(struct.pack("<I", section_writer.tell() + 4))
-                data_bytes.write(section_writer.getvalue())
-
-        return data_bytes
+        return await parse_data(await self._wait_for_response(header.request_id))
 
     async def _send(self, data: Any) -> MessageHeader:
         if self.__hello and self.__hello.get("compression"):
             return await self._send_compressed(data)
 
-        data_bytes = self._make_data(data, flags=0)
+        data_bytes = make_data(
+            data, flags=0, max_write_batch_size=self.max_write_batch_size
+        )
 
         header = MessageHeader(
             message_length=16 + data_bytes.tell(),
@@ -270,7 +287,9 @@ class Connection:
     async def _send_compressed(self, data: Any) -> MessageHeader:
         compressor, compressor_id = pick_compressor(self._hello["compression"])
 
-        original_data = self._make_data(data, flags=0)
+        original_data = make_data(
+            data, flags=0, max_write_batch_size=self.max_write_batch_size
+        )
         data_bytes = io.BytesIO()
 
         data_bytes.write(
@@ -332,7 +351,7 @@ class Connection:
         self._waiters[result.request_id] = future
 
         self._task = asyncio.create_task(self._keep_reading())
-        self.__hello = await self._parse_data(await future)
+        self.__hello = await parse_data(await future)
 
     def use(self, database: str) -> None:
         """Change the database to use.
