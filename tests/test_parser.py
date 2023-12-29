@@ -62,8 +62,6 @@ async def test_parser_document_sequence() -> None:
 
     item = await parse_header(reader)
     parsed_data = await parse_data(item)
-    print(parsed_data["documents"][0])
-    print(EXAMPLE_DATA)
 
     assert parsed_data == {
         "documents": [
