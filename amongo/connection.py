@@ -29,6 +29,30 @@ logger = logging.getLogger(__name__)
 MAX_WRITE_BATCH_SIZE = 1000
 
 
+def bson_dumps(data: Any) -> bytes:
+    """Encode data as BSON.
+
+    Args:
+        data (Any): The data to encode.
+
+    Returns:
+        bytes: The encoded data.
+    """
+    return bson.encode(data)
+
+
+def bson_loads(data: bytes) -> Any:
+    """Decode BSON data.
+
+    Args:
+        data (bytes): The data to decode.
+
+    Returns:
+        Any: The decoded data.
+    """
+    return bson.decode(data)
+
+
 class Connection:
     """Connection to a MongoDB server."""
 
@@ -150,7 +174,7 @@ class Connection:
                 # This is part of the BSON spec, not the MongoDB wire protocol
                 (length,) = struct.unpack("<i", reader.read(4))
                 reader.seek(-4, io.SEEK_CUR)
-                body = bson.loads(reader.read(length))
+                body = bson_loads(reader.read(length))
 
             elif kind == MessageSectionKind.DOCUMENT_SEQUENCE:
                 if body is None:
@@ -167,7 +191,7 @@ class Connection:
 
                 # TODO @teaishealthy: I have no idea how mongod
                 # builds a document sequence - requires testing
-                body[string] = bson.loads(reader.read(size - len(string_bytes) - 1))
+                body[string] = bson_dumps(reader.read(size - len(string_bytes) - 1))
 
         return body
 
@@ -193,7 +217,7 @@ class Connection:
 
         # sections:
         data_bytes.write(struct.pack("<B", 0))  # section kind
-        data_bytes.write(bson.dumps(data))
+        data_bytes.write(bson_dumps(data))
 
         if documents is not None:
             idx = 0
@@ -205,7 +229,7 @@ class Connection:
                 section_writer.write(b"documents\x00")
 
                 while idx < len(documents):
-                    section_writer.write(bson.dumps(documents[idx]))
+                    section_writer.write(bson_dumps(documents[idx]))
                     idx += 1
 
                     if idx >= self.max_write_batch_size:
