@@ -181,9 +181,17 @@ async def parse_data(data: WireItem) -> Any:
 
             string = string_bytes.decode("utf-8")
 
-            # TODO @teaishealthy: I have no idea how mongod
-            # builds a document sequence - requires testing
-            body[string] = bson_dumps(reader.read(size - len(string_bytes) - 1))
+            sequence: list[Any] = []
+            if body.get(string) is None:
+                body[string] = sequence
+
+            sequence.extend(
+                bson.decode_all(  # type: ignore
+                    reader.read(
+                        size - len(string_bytes) - 1,
+                    )
+                )
+            )
 
     return body
 
