@@ -105,7 +105,7 @@ async def parse_header(reader: asyncio.StreamReader) -> WireItem:
     return WireItem(header, data)
 
 
-async def parse_data(data: WireItem) -> Any:
+async def parse_data(data: WireItem) -> Any:  # noqa: C901
     """Parse the data from a WireItem.
 
     Args:
