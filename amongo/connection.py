@@ -122,7 +122,7 @@ class Connection:
         self._waiters[request_id] = future
         return await future
 
-    def _parse_data(self, data: WireItem) -> Any:
+    async def _parse_data(self, data: WireItem) -> Any:
         """Parse the data from a WireItem.
 
         Args:
@@ -144,7 +144,9 @@ class Connection:
                 "  decompressing with %s",
                 compressor.name,
             )
-            decompressed_data = compressor().decompress(data.data[9:])
+            decompressed_data = await asyncio.get_event_loop().run_in_executor(
+                None, compressor().decompress, data.data[9:]
+            )
 
             if len(decompressed_data) != uncompressed_length:
                 msg = "Decompressed data is not the expected length"
@@ -212,7 +214,7 @@ class Connection:
             Any: The response data, this will be decoded from BSON.
         """
         header = await self._send(data)
-        return self._parse_data(await self._wait_for_response(header.request_id))
+        return await self._parse_data(await self._wait_for_response(header.request_id))
 
     def _make_data(self, data: Any, *, flags: int) -> io.BytesIO:
         documents: list[Any] | None = None
@@ -280,7 +282,11 @@ class Connection:
             ),
         )
 
-        data_bytes.write(compressor().compress(original_data.getvalue()))
+        compressed = await asyncio.get_running_loop().run_in_executor(
+            None, compressor().compress, original_data.getvalue()
+        )
+
+        data_bytes.write(compressed)
 
         header = MessageHeader(
             message_length=16 + data_bytes.tell(),
@@ -326,7 +332,7 @@ class Connection:
         self._waiters[result.request_id] = future
 
         self._task = asyncio.create_task(self._keep_reading())
-        self.__hello = self._parse_data(await future)
+        self.__hello = await self._parse_data(await future)
 
     def use(self, database: str) -> None:
         """Change the database to use.
