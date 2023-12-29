@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
+from dataclasses import dataclass
 from enum import IntFlag
 from typing import NamedTuple, TypeVar
 
@@ -45,3 +46,8 @@ class MessageHeader(NamedTuple):
 class WireItem(NamedTuple):
     header: MessageHeader
     data: bytes
+
+
+@dataclass
+class ConnectionOptions:
+    compressors: list[str] | None = None

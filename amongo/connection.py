@@ -10,13 +10,13 @@ import random
 import struct
 from asyncio import StreamReader, StreamWriter
 from typing import TYPE_CHECKING, Any, TypeVar, cast
-from urllib.parse import ParseResult, urlparse
+from urllib.parse import ParseResult, parse_qs, urlparse
 
 import bson
 
 from .collection import Collection
 from .core.compressors import compression_lookup, list_compressors, pick_compressor
-from .core.models import Flags, MessageHeader, WireItem
+from .core.models import ConnectionOptions, Flags, MessageHeader, WireItem
 from .core.typings import MessageOpCode, MessageSectionKind
 
 if TYPE_CHECKING:
@@ -50,7 +50,7 @@ def bson_loads(data: bytes) -> Any:
     Returns:
         Any: The decoded data.
     """
-    return bson.decode(data)
+    return bson.decode(data)  # type: ignore
 
 
 class Connection:
@@ -76,6 +76,13 @@ class Connection:
         self.__reader: StreamReader | None = None
         self.__writer: StreamWriter | None = None
         self._uri: ParseResult = urlparse(uri)
+        query_string = parse_qs(self._uri.query)
+        compressors = query_string.get("compressors", None)
+
+        if compressors is not None:
+            compressors = compressors[0].split(",")
+
+        self._options: ConnectionOptions = ConnectionOptions(compressors=compressors)
         self.__hello: Hello | None = None
         self._task: asyncio.Task[None] | None = None
         self._waiters: dict[int, asyncio.Future[WireItem]] = {}
@@ -296,16 +303,23 @@ class Connection:
             self._uri.port or 27017,
         )
 
-        logger.debug(
-            "Sending hello. Available compressors: %s", ", ".join(list_compressors())
-        )
-        result = await self._send(
-            {
-                "hello": 1,
-                "$db": self._uri.path[1:] or "admin",
-                "compression": list_compressors(),
-            },
-        )
+        command: dict[str, Any] = {
+            "hello": 1,
+            "$db": self._uri.path[1:] or "admin",
+        }
+
+        if self._options.compressors is None:
+            logger.debug("Sending hello.")
+        else:
+            logger.debug(
+                "Sending hello. Available compressors: %s",
+                ", ".join(self._options.compressors),
+            )
+            command["compression"] = [
+                c for c in list_compressors() if c in self._options.compressors
+            ]
+
+        result = await self._send(command)
         future = asyncio.get_running_loop().create_future()
         self._waiters[result.request_id] = future
 
