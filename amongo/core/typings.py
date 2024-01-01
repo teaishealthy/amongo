@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from enum import IntEnum
-from typing import TYPE_CHECKING, Any, TypedDict
+from typing import TYPE_CHECKING, Any, TypeAlias, TypedDict
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -26,7 +26,7 @@ class Hello(TypedDict):
 
 class CursorType(TypedDict):
     id: int
-    nextBatch: list[dict[str, Any]]
+    nextBatch: list[Document]
     ns: str
 
 
@@ -38,3 +38,6 @@ class MessageOpCode(IntEnum):
 class MessageSectionKind(IntEnum):
     BODY = 0
     DOCUMENT_SEQUENCE = 1
+
+
+Document: TypeAlias = dict[str, Any]

@@ -10,7 +10,7 @@ from .core.errors import CursorIsEmptyError
 
 if TYPE_CHECKING:
     from .connection import Connection
-    from .core.typings import CursorType
+    from .core.typings import CursorType, Document
 
 
 class Cursor:
@@ -34,7 +34,7 @@ class Cursor:
         """Get the cursor as an async iterator."""
         return self
 
-    async def __anext__(self) -> dict[str, Any]:
+    async def __anext__(self) -> Document:
         """Get the next document from the cursor."""
         try:
             return await self.next()
@@ -45,14 +45,14 @@ class Cursor:
         """Get the string representation of the cursor."""
         return f"<Cursor {self._cursor['ns']}#{self._cursor['id']}>"
 
-    async def next(self) -> dict[str, Any]:
+    async def next(self) -> Document:
         """Get the next document from the cursor.
 
         Raises:
             Empty: If there are no more documents in the cursor.
 
         Returns:
-            dict[str, Any]: The next document.
+            Document: The next document.
         """
         while self._cursor.get("nextBatch"):
             if self._cursor["nextBatch"]:
