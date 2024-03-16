@@ -9,7 +9,7 @@ import logging
 import random
 import struct
 from asyncio import StreamReader, StreamWriter
-from typing import TYPE_CHECKING, Any, TypeVar, cast
+from typing import TYPE_CHECKING, Any, TypeVar
 from urllib.parse import ParseResult, parse_qs, urlparse
 
 import bson
@@ -53,10 +53,23 @@ def bson_loads(data: bytes) -> Any:
     return bson.decode(data)  # type: ignore
 
 
-def make_data(data: Any, *, max_write_batch_size: int, flags: int) -> io.BytesIO:
-    documents: list[Any] | None = None
-    if isinstance(data, dict) and "documents" in data:
-        documents = cast(Any, data.pop("documents"))  # type: ignore
+def make_data(
+    data: Any, *, max_write_batch_size: int, flags: int, list_key: str | None = None
+) -> io.BytesIO:
+    """Make a data section for an OP_MSG.
+
+    Args:
+        data (Any): The data to encode.
+        max_write_batch_size (int): The maximum number of documents that can be inserted in a single batch.
+        flags (int): The flags to use.
+        list_key (str | None, optional): The key to use for a list of documents.
+
+    Returns:
+        io.BytesIO: The encoded data.
+    """  # noqa: E501
+    arr: list[Any] | None = None
+    if list_key is not None:
+        arr = data.pop(list_key)
 
     data_bytes = io.BytesIO()
     data_bytes.write(struct.pack("<I", flags))
@@ -65,17 +78,18 @@ def make_data(data: Any, *, max_write_batch_size: int, flags: int) -> io.BytesIO
     data_bytes.write(struct.pack("<B", 0))  # section kind
     data_bytes.write(bson_dumps(data))
 
-    if documents is not None:
+    if arr is not None and list_key is not None:
         idx = 0
-        while idx < len(documents):
+        while idx < len(arr):
             section_writer = io.BytesIO()
 
             data_bytes.write(struct.pack("<B", 1))  # section kind
 
-            section_writer.write(b"documents\x00")
+            section_writer.write(list_key.encode("utf-8"))
+            section_writer.write(b"\x00")
 
-            while idx < len(documents):
-                section_writer.write(bson_dumps(documents[idx]))
+            while idx < len(arr):
+                section_writer.write(bson_dumps(arr[idx]))
                 idx += 1
 
                 if idx >= max_write_batch_size:
@@ -259,24 +273,28 @@ class Connection:
         self._waiters[request_id] = future
         return await future
 
-    async def _send_and_wait(self, data: Any) -> Any:
+    async def _send_and_wait(self, data: Any, list_key: str | None = None) -> Any:
         """Send an OP_MSG with kind 0 and wait for the matching response.
 
         Args:
             data (Any): The data to send, this will be encoded as BSON.
+            list_key (str | None, optional): The key to use for a list of documents.
 
         Returns:
             Any: The response data, this will be decoded from BSON.
         """
-        header = await self._send(data)
+        header = await self._send(data, list_key)
         return await parse_data(await self._wait_for_response(header.request_id))
 
-    async def _send(self, data: Any) -> MessageHeader:
+    async def _send(self, data: Any, list_key: str | None = None) -> MessageHeader:
         if self.__hello and self.__hello.get("compression"):
-            return await self._send_compressed(data)
+            return await self._send_compressed(data, list_key)
 
         data_bytes = make_data(
-            data, flags=0, max_write_batch_size=self.max_write_batch_size
+            data,
+            flags=0,
+            max_write_batch_size=self.max_write_batch_size,
+            list_key=list_key,
         )
 
         header = MessageHeader(
@@ -291,11 +309,16 @@ class Connection:
         await self._writer.drain()
         return header
 
-    async def _send_compressed(self, data: Any) -> MessageHeader:
+    async def _send_compressed(
+        self, data: Any, list_key: str | None = None
+    ) -> MessageHeader:
         compressor, compressor_id = pick_compressor(self._hello["compression"])
 
         original_data = make_data(
-            data, flags=0, max_write_batch_size=self.max_write_batch_size
+            data,
+            flags=0,
+            max_write_batch_size=self.max_write_batch_size,
+            list_key=list_key,
         )
         data_bytes = io.BytesIO()
 

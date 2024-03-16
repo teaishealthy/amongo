@@ -115,7 +115,7 @@ class Collection:
             "$db": self._db,
         }
 
-        result: Document = await self._connection._send_and_wait(command)
+        result: Document = await self._connection._send_and_wait(command, "deletes")
 
         if result["ok"] != 1:
             raise DatabaseError(result)
@@ -148,6 +148,7 @@ class Collection:
                 "documents": documents,
                 "$db": self._db,
             },
+            "documents",
         )
         return result["n"]
 
